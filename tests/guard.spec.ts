@@ -7,20 +7,29 @@ import jwt from 'jsonwebtoken'
 import { timeTravel } from '../tests/helpers.js'
 
 test.group('Jwt guard | authenticate', () => {
-  test('it should return a token when user is authenticated', async ({ assert }) => {
+  test('it should return the content function provided when generating jwt', async ({ assert }) => {
     const ctx = new HttpContextFactory().create()
     const userProvider = new JwtFakeUserProvider()
+    const jwtContentFn = (user) => ({ id: user.getId(), otherProperty: 'random' })
+    const guard = new JwtGuard(ctx, userProvider, {
+      secret: 'thisisasecret',
+      expiresIn: '1h',
+      jwtContent: jwtContentFn,
+    })
+    const user = await userProvider.findById(1)
 
-    const guard = new JwtGuard(ctx, userProvider, { secret: 'thisisasecret' })
-    ctx.request.request.headers.authorization = `Bearer ${jwt.sign({ userId: 1 }, 'thisisasecret')}`
+    const content = jwtContentFn(user!)
+    const tokenResponse = await guard.generate(user!.getOriginal())
+    console.log('response', tokenResponse)
+    // Verify the token structure
+    assert.equal(tokenResponse.type, 'bearer')
+    assert.exists(tokenResponse.token)
+    assert.equal(tokenResponse.expiresIn, '1h')
 
-    const authenticatedUser = await guard.authenticate()
-
-    assert.isTrue(guard.isAuthenticated)
-    assert.isTrue(guard.authenticationAttempted)
-
-    assert.equal(guard.user, authenticatedUser)
-    assert.deepEqual(guard.getUserOrFail(), authenticatedUser)
+    // Verify the token payload
+    const decoded = jwt.verify(tokenResponse.token, 'thisisasecret') as any
+    assert.equal(decoded.id, content.id)
+    assert.equal(decoded.otherProperty, content.otherProperty)
   })
 
   test('it should return a cookie when user is authenticated', async ({ assert }) => {
