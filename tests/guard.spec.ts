@@ -1,8 +1,8 @@
 import { test } from '@japa/runner'
-import { JwtGuard } from '../src/jwt.js'
+import { JwtGuard, JwtGuardUser } from '../src/jwt.js'
 import { HttpContextFactory } from '@adonisjs/core/factories/http'
 import { errors } from '@adonisjs/auth'
-import { JwtFakeUserProvider } from '../factories/main.js'
+import { JwtAuthFakeUser, JwtFakeUserProvider } from '../factories/main.js'
 import jwt from 'jsonwebtoken'
 import { timeTravel } from '../tests/helpers.js'
 
@@ -10,24 +10,32 @@ test.group('Jwt guard | authenticate', () => {
   test('it should return the content function provided when generating jwt', async ({ assert }) => {
     const ctx = new HttpContextFactory().create()
     const userProvider = new JwtFakeUserProvider()
-    const jwtContentFn = (user) => ({ id: user.getId(), otherProperty: 'random' })
+    const jwtContentFn = (user: JwtGuardUser<JwtAuthFakeUser>) => ({
+      id: user.getId(),
+      otherProperty: 'random',
+    })
     const guard = new JwtGuard(ctx, userProvider, {
       secret: 'thisisasecret',
       expiresIn: '1h',
       jwtContent: jwtContentFn,
+      useCookies: false,
     })
     const user = await userProvider.findById(1)
 
     const content = jwtContentFn(user!)
-    const tokenResponse = await guard.generate(user!.getOriginal())
+    const tokenResponse: any = await guard.generate(user!.getOriginal())
     console.log('response', tokenResponse)
+    let decoded: any = {}
+
+    if ('token' in tokenResponse) decoded = jwt.verify(tokenResponse.token, 'thisisasecret')
+    else assert.fail('Token response is not an object when useCookies is false')
     // Verify the token structure
     assert.equal(tokenResponse.type, 'bearer')
     assert.exists(tokenResponse.token)
     assert.equal(tokenResponse.expiresIn, '1h')
 
-    // Verify the token payload
-    const decoded = jwt.verify(tokenResponse.token, 'thisisasecret') as any
+    //tokenResponse can be an object or a Response Type handle it
+
     assert.equal(decoded.id, content.id)
     assert.equal(decoded.otherProperty, content.otherProperty)
   })
